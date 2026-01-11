@@ -1,40 +1,69 @@
--- [[ BugHunt Pro - Hydroxide Based Init for Solara ]] --
-local environment = getgenv()
+local environment = assert(getgenv, "<OH> ~ Your exploit is not supported")()
 
--- منع التداخل عند إعادة التشغيل
-if oh then 
-    pcall(oh.Exit) 
+if oh then
+    oh.Exit()
 end
 
-local user = "m8lza" -- حسابك في GitHub
-local repo = "BugHuntTool" -- اسم المستودع
-local branch = "main" -- الفرع الأساسي
+local web = true
+local user = "Upbolt" -- change if you're using a fork
+local branch = "revision"
 local importCache = {}
 
--- 1. تعريف الدوال الأساسية وتجنب أخطاء الدعم (Solara Fix)
+local function hasMethods(methods)
+    for name in pairs(methods) do
+        if not environment[name] then
+            return false
+        end
+    end
+
+    return true
+end
+
+local function useMethods(module)
+    for name, method in pairs(module) do
+        if method then
+            environment[name] = method
+        end
+    end
+end
+
+if Window and PROTOSMASHER_LOADED then
+    getgenv().get_script_function = nil
+end
+
 local globalMethods = {
-    checkCaller = checkcaller or function() return false end,
-    newCClosure = newcclosure or function(f) return f end,
+    checkCaller = checkcaller,
+    newCClosure = newcclosure,
     hookFunction = hookfunction or detour_function,
-    getGc = getgc or get_gc_objects or function() return {} end,
+    getGc = getgc or get_gc_objects,
     getInfo = debug.getinfo or getinfo,
-    getSenv = getsenv or function() return {} end,
+    getSenv = getsenv,
     getMenv = getmenv or getsenv,
+    getContext = getthreadcontext or get_thread_context or (syn and syn.get_thread_identity),
     getConnections = get_signal_cons or getconnections,
     getScriptClosure = getscriptclosure or get_script_function,
     getNamecallMethod = getnamecallmethod or get_namecall_method,
-    getConstants = debug.getconstants or getconstants,
-    getUpvalues = debug.getupvalues or getupvalues,
+    getCallingScript = getcallingscript or get_calling_script,
+    getLoadedModules = getloadedmodules or get_loaded_modules,
+    getConstants = debug.getconstants or getconstants or getconsts,
+    getUpvalues = debug.getupvalues or getupvalues or getupvals,
     getProtos = debug.getprotos or getprotos,
-    getConstant = debug.getconstant or getconstant,
-    getUpvalue = debug.getupvalue or getupvalue,
+    getStack = debug.getstack or getstack,
+    getConstant = debug.getconstant or getconstant or getconst,
+    getUpvalue = debug.getupvalue or getupvalue or getupval,
+    getProto = debug.getproto or getproto,
     getMetatable = getrawmetatable or debug.getmetatable,
+    getHui = get_hidden_gui or gethui,
     setClipboard = setclipboard or writeclipboard,
-    setReadOnly = setreadonly or make_readonly or function(t, b) 
-        local mt = getrawmetatable(t)
-        if mt then mt.__readonly = b end
-    end,
-    isLClosure = islclosure or function(f) return type(f) == "function" end,
+    setConstant = debug.setconstant or setconstant or setconst,
+    setContext = setthreadcontext or set_thread_context or (syn and syn.set_thread_identity),
+    setUpvalue = debug.setupvalue or setupvalue or setupval,
+    setStack = debug.setstack or setstack,
+    setReadOnly = setreadonly or (make_writeable and function(table, readonly) if readonly then make_readonly(table) else make_writeable(table) end end),
+    isLClosure = islclosure or is_l_closure or (iscclosure and function(closure) return not iscclosure(closure) end),
+    isReadOnly = isreadonly or is_readonly,
+    isXClosure = is_synapse_function or issentinelclosure or is_protosmasher_closure or is_sirhurt_closure or iselectronfunction or istempleclosure or checkclosure,
+    hookMetaMethod = hookmetamethod or (hookfunction and function(object, method, hook) return hookfunction(getMetatable(object)[method], hook) end),
     readFile = readfile,
     writeFile = writefile,
     makeFolder = makefolder,
@@ -42,66 +71,223 @@ local globalMethods = {
     isFile = isfile,
 }
 
--- 2. دالة الاستيراد الذكية (Smart Import) من GitHub الخاص بك
-function environment.import(asset)
-    if importCache[asset] then
-        return unpack(importCache[asset])
-    end
-
-    -- رابط ملفاتك داخل مجلد bughunttool
-    local url = string.format("https://raw.githubusercontent.com/%s/%s/%s/bughunttool/%s.lua", user, repo, branch, asset)
-    
-    local success, content = pcall(game.HttpGet, game, url)
-    
-    if success and content and not content:find("404") then
-        local func, err = loadstring(content, asset .. '.lua')
-        if func then
-            local result = { func() }
-            importCache[asset] = result
-            return unpack(result)
-        else
-            warn("<BugHunt> Error parsing " .. asset .. ": " .. tostring(err))
-        end
-    else
-        warn("<BugHunt> Resource not found: " .. asset)
+if PROTOSMASHER_LOADED then
+    globalMethods.getConstant = function(closure, index)
+        return globalMethods.getConstants(closure)[index]
     end
 end
 
--- 3. بناء كائن النظام (oh)
+local oldGetUpvalue = globalMethods.getUpvalue
+local oldGetUpvalues = globalMethods.getUpvalues
+
+globalMethods.getUpvalue = function(closure, index)
+    if type(closure) == "table" then
+        return oldGetUpvalue(closure.Data, index)
+    end
+
+    return oldGetUpvalue(closure, index)
+end
+
+globalMethods.getUpvalues = function(closure)
+    if type(closure) == "table" then
+        return oldGetUpvalues(closure.Data)
+    end
+
+    return oldGetUpvalues(closure)
+end
+
+environment.hasMethods = hasMethods
 environment.oh = {
     Events = {},
     Hooks = {},
     Cache = importCache,
     Methods = globalMethods,
     Constants = {
-        -- أيقونات وألوان الواجهة (مستمدة من كودك الأصلي)
-        Types = { ["nil"] = "rbxassetid://4800232219", table = "rbxassetid://4666594276" },
-        Syntax = { string = Color3.fromRGB(225, 150, 85), number = Color3.fromRGB(170, 225, 127) }
+        Types = {
+            ["nil"] = "rbxassetid://4800232219",
+            table = "rbxassetid://4666594276",
+            string = "rbxassetid://4666593882",
+            number = "rbxassetid://4666593882",
+            boolean = "rbxassetid://4666593882",
+            userdata = "rbxassetid://4666594723",
+            vector = "rbxassetid://4666594723",
+            ["function"] = "rbxassetid://4666593447",
+            ["thread"] = "rbxassetid://4666593447",
+            ["integral"] = "rbxassetid://4666593882"
+        },
+        Syntax = {
+            ["nil"] = Color3.fromRGB(244, 135, 113),
+            table = Color3.fromRGB(225, 225, 225),
+            string = Color3.fromRGB(225, 150, 85),
+            number = Color3.fromRGB(170, 225, 127),
+            boolean = Color3.fromRGB(127, 200, 255),
+            userdata = Color3.fromRGB(225, 225, 225),
+            vector = Color3.fromRGB(225, 225, 225),
+            ["function"] = Color3.fromRGB(225, 225, 225),
+            ["thread"] = Color3.fromRGB(225, 225, 225),
+            ["unnamed_function"] = Color3.fromRGB(175, 175, 175)
+        }
     },
     Exit = function()
-        for _, event in pairs(environment.oh.Events) do pcall(event.Disconnect, event) end
-        print("BugHunt System Stopped.")
+        for _i, event in pairs(oh.Events) do
+            event:Disconnect()
+        end
+
+        for original, hook in pairs(oh.Hooks) do
+            local hookType = type(hook)
+            if hookType == "function" then
+                hookFunction(hook, original)
+            elseif hookType == "table" then
+                hookFunction(hook.Closure.Data, hook.Original)
+            end
+        end
+
+        local ui = importCache["rbxassetid://11389137937"]
+        local assets = importCache["rbxassetid://5042114982"]
+
+        if ui then
+            unpack(ui):Destroy()
+        end
+
+        if assets then
+            unpack(assets):Destroy()
+        end
     end
 }
 
--- 4. تحميل الدوال المساعدة (Methods) من مستودعك
--- ملاحظة: تأكد أن هذه الملفات موجودة في GitHub بنفس المسار
-pcall(function()
-    environment.import("methods/string")
-    environment.import("methods/table")
-    environment.import("methods/environment")
-end)
+if getConnections then 
+    for __, connection in pairs(getConnections(game:GetService("ScriptContext").Error)) do
 
--- دمج الدوال العالمية في البيئة
-for name, method in pairs(globalMethods) do
-    environment[name] = method
+        local conn = getrawmetatable(connection)
+        local old = conn and conn.__index
+        
+        if PROTOSMASHER_LOADED ~= nil then setwriteable(conn) else setReadOnly(conn, false) end
+        
+        if old then
+            conn.__index = newcclosure(function(t, k)
+                if k == "Connected" then
+                    return true
+                end
+                return old(t, k)
+            end)
+        end
+
+        if PROTOSMASHER_LOADED ~= nil then
+            setReadOnly(conn)
+            connection:Disconnect()
+        else
+            setReadOnly(conn, true)
+            connection:Disable()
+        end
+    end
 end
 
-print("--------------------------------------")
-print("BugHunt Pro V6 (Solara Ready)")
-print("User: " .. user)
-print("Status: Active")
-print("--------------------------------------")
+useMethods(globalMethods)
 
--- 5. تشغيل الواجهة (إذا قمت برفعها)
--- import("ui/main")
+local HttpService = game:GetService("HttpService")
+local releaseInfo = HttpService:JSONDecode(game:HttpGetAsync("https://api.github.com/repos/" .. user .. "/Hydroxide/releases"))[1]
+
+if readFile and writeFile then
+    local hasFolderFunctions = (isFolder and makeFolder) ~= nil
+    local ran, result = pcall(readFile, "__oh_version.txt")
+
+    if not ran or releaseInfo.tag_name ~= result then
+        if hasFolderFunctions then
+            local function createFolder(path)
+                if not isFolder(path) then
+                    makeFolder(path)
+                end
+            end
+
+            createFolder("hydroxide")
+            createFolder("hydroxide/user")
+            createFolder("hydroxide/user/" .. user)
+            createFolder("hydroxide/user/" .. user .. "/methods")
+            createFolder("hydroxide/user/" .. user .. "/modules")
+            createFolder("hydroxide/user/" .. user .. "/objects")
+            createFolder("hydroxide/user/" .. user .. "/ui")
+            createFolder("hydroxide/user/" .. user .. "/ui/controls")
+            createFolder("hydroxide/user/" .. user .. "/ui/modules")
+        end
+
+        function environment.import(asset)
+            if importCache[asset] then
+                return unpack(importCache[asset])
+            end
+
+            local assets
+
+            if asset:find("rbxassetid://") then
+                assets = { game:GetObjects(asset)[1] }
+            elseif web then
+                if readFile and writeFile then
+                    local file = (hasFolderFunctions and "hydroxide/user/" .. user .. '/' .. asset .. ".lua") or ("hydroxide-" .. user .. '-' .. asset:gsub('/', '-') .. ".lua")
+                    local content
+
+                    if (isFile and not isFile(file)) or not importCache[asset] then
+                        content = game:HttpGetAsync("https://raw.githubusercontent.com/" .. user .. "/Hydroxide/" .. branch .. '/' .. asset .. ".lua")
+                        writeFile(file, content)
+                    else
+                        local ran, result = pcall(readFile, file)
+
+                        if (not ran) or not importCache[asset] then
+                            content = game:HttpGetAsync("https://raw.githubusercontent.com/" .. user .. "/Hydroxide/" .. branch .. '/' .. asset .. ".lua")
+                            writeFile(file, content)
+                        else
+                            content = result
+                        end
+                    end
+
+                    assets = { loadstring(content, asset .. '.lua')() }
+                else
+                    assets = { loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/" .. user .. "/Hydroxide/" .. branch .. '/' .. asset .. ".lua"), asset .. '.lua')() }
+                end
+            else
+                assets = { loadstring(readFile("hydroxide/" .. asset .. ".lua"), asset .. '.lua')() }
+            end
+
+            importCache[asset] = assets
+            return unpack(assets)
+        end
+
+        writeFile("__oh_version.txt", releaseInfo.tag_name)
+    elseif ran and releaseInfo.tag_name == result then
+        function environment.import(asset)
+            if importCache[asset] then
+                return unpack(importCache[asset])
+            end
+
+            if asset:find("rbxassetid://") then
+                assets = { game:GetObjects(asset)[1] }
+            elseif web then
+                local file = (hasFolderFunctions and "hydroxide/user/" .. user .. '/' .. asset .. ".lua") or ("hydroxide-" .. user .. '-' .. asset:gsub('/', '-') .. ".lua")
+                local ran, result = pcall(readFile, file)
+                local content
+
+                if not ran then
+                    content = game:HttpGetAsync("https://raw.githubusercontent.com/" .. user .. "/Hydroxide/" .. branch .. '/' .. asset .. ".lua")
+                    writeFile(file, content)
+                else
+                    content = result
+                end
+
+                assets = { loadstring(content, asset .. '.lua')() }
+            else
+                assets = { loadstring(readFile("hydroxide/" .. asset .. ".lua"), asset .. '.lua')() }
+            end
+
+            importCache[asset] = assets
+            return unpack(assets)
+        end
+
+    end
+
+    useMethods({ import = environment.import })
+end
+
+useMethods(import("methods/string"))
+useMethods(import("methods/table"))
+useMethods(import("methods/userdata"))
+useMethods(import("methods/environment"))
+
+--import("ui/main")
